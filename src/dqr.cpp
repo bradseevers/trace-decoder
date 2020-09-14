@@ -1943,11 +1943,6 @@ TraceDqr::DQErr Analytics::updateTraceInfo(NexusMessage &nm,uint32_t bits,uint32
 			return status;
 		}
 		break;
-	case TraceDqr::TCODE_REPEATINSTRUCTION_WS:
-		core[nm.coreId].num_trace_incircuittraceWS += 1;
-		core[nm.coreId].trace_bits_incircuittraceWS += bits;
-		have_faddr = true;
-		break;
 	case TraceDqr::TCODE_INCIRCUITTRACE:
 		core[nm.coreId].num_trace_incircuittrace += 1;
 		core[nm.coreId].trace_bits_incircuittrace += bits;
@@ -1974,6 +1969,7 @@ TraceDqr::DQErr Analytics::updateTraceInfo(NexusMessage &nm,uint32_t bits,uint32
 	case TraceDqr::TCODE_AUXACCESS_RESPONSE:
 	case TraceDqr::TCODE_REPEATBRANCH:
 	case TraceDqr::TCODE_REPEATINSTRUCTION:
+	case TraceDqr::TCODE_REPEATINSTRUCTION_WS:
 	default:
 		status = TraceDqr::DQERR_ERR;
 		return status;
@@ -4804,6 +4800,8 @@ TraceDqr::CountType Count::getCurrentCountType(int core)
 	if (i_cnt[core] > 0) {
 		return TraceDqr::COUNTTYPE_i_cnt;
 	}
+
+//	printf("count type: hist: %d taken:%d not taken:%d i_cnt: %d\n",histBit[core],takenCount[core],notTakenCount[core],i_cnt[core]);
 
 	return TraceDqr::COUNTTYPE_none;
 }
@@ -10065,6 +10063,7 @@ TraceDqr::DQErr Simulator::NextInstruction(Instruction **instInfo, NexusMessage 
 	// improve print callback disassembly routines to use stream as a pointer to a struct with a buffer and
 	// and length to improve performance and allow multithreading (or multi object)
 	// improve disassembly to not print 32 bit literals as 64 bits
+	// bfd.h seems outof sync with libbfe. bfd_arch_riskv is wrong! Update bfd.h in lib\xx\bfd.h
 
 	return TraceDqr::DQERR_OK;
 }
