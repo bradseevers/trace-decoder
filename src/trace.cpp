@@ -385,6 +385,7 @@ Trace::Trace(char *tf_name,bool binaryFlag,char *ef_name,int numAddrBits,uint32_
   elfReader    = nullptr;
   symtab       = nullptr;
   disassembler = nullptr;
+  caTrace      = nullptr;
 
   assert(tf_name != nullptr);
 
@@ -607,6 +608,11 @@ void Trace::cleanUp()
 			delete messageSync[i];
 			messageSync[i] = nullptr;
 		}
+	}
+
+	if (caTrace != nullptr) {
+		delete caTrace;
+		caTrace = nullptr;
 	}
 }
 
@@ -1433,6 +1439,7 @@ TraceDqr::DQErr Trace::processTraceMessage(NexusMessage &nm,TraceDqr::ADDRESS &p
 		faddr = nm.sync.f_addr << 1;
 		pc = faddr;
 		counts->resetStack(nm.coreId);
+		counts->resetCounts(nm.coreId);
 		break;
 	case TraceDqr::TCODE_DIRECT_BRANCH_WS:
 		if (nm.haveTimestamp) {
@@ -1441,6 +1448,7 @@ TraceDqr::DQErr Trace::processTraceMessage(NexusMessage &nm,TraceDqr::ADDRESS &p
 		faddr = nm.directBranchWS.f_addr << 1;
 		pc = faddr;
 		counts->resetStack(nm.coreId);
+		counts->resetCounts(nm.coreId);
 		break;
 	case TraceDqr::TCODE_INDIRECT_BRANCH_WS:
 		if (nm.haveTimestamp) {
@@ -1449,6 +1457,7 @@ TraceDqr::DQErr Trace::processTraceMessage(NexusMessage &nm,TraceDqr::ADDRESS &p
 		faddr = nm.indirectBranchWS.f_addr << 1;
 		pc = faddr;
 		counts->resetStack(nm.coreId);
+		counts->resetCounts(nm.coreId);
 		break;
 	case TraceDqr::TCODE_INDIRECTBRANCHHISTORY:
 		if (nm.haveTimestamp) {
@@ -1464,6 +1473,7 @@ TraceDqr::DQErr Trace::processTraceMessage(NexusMessage &nm,TraceDqr::ADDRESS &p
 		faddr = nm.indirectHistoryWS.f_addr << 1;
 		pc = faddr;
 		counts->resetStack(nm.coreId);
+		counts->resetCounts(nm.coreId);
 		break;
 	case TraceDqr::TCODE_INCIRCUITTRACE:
 		if (nm.haveTimestamp) {
@@ -1484,7 +1494,7 @@ TraceDqr::DQErr Trace::processTraceMessage(NexusMessage &nm,TraceDqr::ADDRESS &p
 
 		faddr = nm.ictWS.ckdata << 1;
 //		pc = faddr;
-		// don't reset call/return stack for this message
+		// don't reset call/return stack for this message - not a normal sync!
 		break;
 	case TraceDqr::TCODE_DEBUG_STATUS:
 	case TraceDqr::TCODE_DEVICE_ID:
@@ -1741,7 +1751,6 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 					break;
 				case TraceDqr::TCODE_INCIRCUITTRACE_WS:
 					teAddr = nm.ictWS.ckdata << 1;
-					break;
 					break;
 				case TraceDqr::TCODE_INDIRECTBRANCHHISTORY_WS:
 					teAddr = nm.indirectHistoryWS.f_addr << 1;
@@ -2090,10 +2099,7 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 
 				state[currentCore] = TRACE_STATE_GETSECONDMSG;
 				break;
-			case TraceDqr::TCODE_INCIRCUITTRACE_WS:
-				// even though this contains an FADDR, can't release from this state because
-				// it contains no icnt, and the next icnt will apply to code before and after
-				// this message.
+			case TraceDqr::TCODE_INCIRCUITTRACE_WS: // If we are looking for a starting sync and see this, all is cool!!
 				rc = processTraceMessage(nm,currentAddress[currentCore],lastFaddr[currentCore],lastTime[currentCore]);
 				if (rc != TraceDqr::DQERR_OK) {
 					printf("Error: NextInstruction(): state TRACE_STATE_GETFIRSTSYNCMSG: processTraceMessage()\n");
@@ -2103,6 +2109,27 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 
 					return status;
 				}
+
+				if ((instInfo != nullptr) || (srcInfo != nullptr)) {
+					Disassemble(lastFaddr[currentCore]);
+
+					if (instInfo != nullptr) {
+						instructionInfo.coreId = currentCore;
+						*instInfo = &instructionInfo;
+						(*instInfo)->CRFlag = (crFlag | enterISR[currentCore]);
+						enterISR[currentCore] = TraceDqr::isNone;
+						(*instInfo)->brFlags = brFlags;
+
+						(*instInfo)->timestamp = lastTime[currentCore];
+					}
+
+					if (srcInfo != nullptr) {
+						sourceInfo.coreId = currentCore;
+						*srcInfo = &sourceInfo;
+					}
+				}
+
+				state[currentCore] = TRACE_STATE_GETSECONDMSG;
 				break;
 			case TraceDqr::TCODE_OWNERSHIP_TRACE:
 			case TraceDqr::TCODE_DIRECT_BRANCH:
@@ -2221,25 +2248,36 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 					return status;
 				}
 
+				if ((instInfo != nullptr) || (srcInfo != nullptr)) {
+					Disassemble(lastFaddr[currentCore]);
+
+					if (instInfo != nullptr) {
+						instructionInfo.coreId = currentCore;
+						*instInfo = &instructionInfo;
+						(*instInfo)->CRFlag = (crFlag | enterISR[currentCore]);
+						enterISR[currentCore] = TraceDqr::isNone;
+						(*instInfo)->brFlags = brFlags;
+
+						(*instInfo)->timestamp = lastTime[currentCore];
+					}
+
+					if (srcInfo != nullptr) {
+						sourceInfo.coreId = currentCore;
+						*srcInfo = &sourceInfo;
+					}
+				}
+
 				if (msgInfo != nullptr) {
 					messageInfo = nm;
 					messageInfo.time = lastTime[currentCore];
 
-//					use faddr and not currentAddress[] for currentAddress
+					// use lastFaddr[] and not currentAddress[] for currentAddress
 
 					messageInfo.currentAddress = lastFaddr[currentCore];
-//					messageInfo.currentAddress = currentAddress[currentCore];
 
 					if (messageInfo.processITCPrintData(itcPrint) == false) {
 						*msgInfo = &messageInfo;
 					}
-				}
-
-				if (srcInfo != nullptr) {
-					Disassemble(currentAddress[currentCore]);
-
-					sourceInfo.coreId = currentCore;
-					*srcInfo = &sourceInfo;
 				}
 
 				readNewTraceMessage = true;
@@ -2274,7 +2312,7 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 
 				return status;
 			default:
-				printf("Error: bad tcode type in state TRACE_STATE_GETNEXTMSG. TCODE (%d)\n",nm.tcode);
+				printf("Error: bad tcode type in state TRACE_STATE_GETSECONDMSG. TCODE (%d)\n",nm.tcode);
 
 				state[currentCore] = TRACE_STATE_ERROR;
 				status = TraceDqr::DQERR_ERR;
@@ -2319,8 +2357,6 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 					messageInfo = nm;
 					messageInfo.time = lastTime[currentCore];
 
-					// for incircuit trace, use faddr and not currentAddress[] for returned address
-
 					if ((nm.tcode == TraceDqr::TCODE_INCIRCUITTRACE) || (nm.tcode == TraceDqr::TCODE_INCIRCUITTRACE_WS)) {
 						messageInfo.currentAddress = lastFaddr[currentCore];
 					}
@@ -2334,7 +2370,12 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 				}
 
 				if ((srcInfo != nullptr) && (*srcInfo == nullptr)) {
-					Disassemble(currentAddress[currentCore]);
+					if ((nm.tcode == TraceDqr::TCODE_INCIRCUITTRACE) || (nm.tcode == TraceDqr::TCODE_INCIRCUITTRACE_WS)) {
+						Disassemble(lastFaddr[currentCore]);
+					}
+					else {
+						Disassemble(currentAddress[currentCore]);
+					}
 
 					sourceInfo.coreId = currentCore;
 					*srcInfo = &sourceInfo;
