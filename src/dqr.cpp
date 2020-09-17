@@ -4189,7 +4189,7 @@ void  NexusMessage::messageToText(char *dst,size_t dst_len,int level)
 				n += snprintf(dst+n,dst_len-n,"%02x",rawData[i]);
 			}
 			i += 1;
-		} while (((size_t)i < sizeof rawData / sizeof rawData[0]) && ((rawData[i] & 0x3) != TraceDqr::MSEO_END));
+		} while (((size_t)i < sizeof rawData / sizeof rawData[0]) && ((rawData[i-1] & 0x3) != TraceDqr::MSEO_END));
 		n += snprintf(dst+n,dst_len-n,", ");
 	}
 
@@ -7103,7 +7103,7 @@ TraceDqr::DQErr SliceFileParser::readNextTraceMsg(NexusMessage &nm,Analytics &an
 		do {
 			nm.rawData[i] = msg[i];
 			i += 1;
-		} while (((size_t)i < sizeof nm.rawData / sizeof nm.rawData[0]) && ((msg[i] & 0x03) != TraceDqr::MSEO_END));
+		} while (((size_t)i < sizeof nm.rawData / sizeof nm.rawData[0]) && ((msg[i-1] & 0x03) != TraceDqr::MSEO_END));
 
 		rc = parseFixedField(6, &val);
 		if (rc == TraceDqr::DQERR_OK) {
