@@ -35,7 +35,7 @@
 
 //#define DQR_MAXCORES	8
 
-const char * const DQR_VERSION = "0.9.2";
+const char * const DQR_VERSION = "0.9.4";
 
 // static C type helper functions
 
@@ -3352,6 +3352,11 @@ NexusMessage::NexusMessage()
 	timestamp      = 0;
 	currentAddress = 0;
 	time = 0;
+
+	offset = 0;
+	for (int i = 0; (size_t)i < sizeof rawData/sizeof rawData[0]; i++) {
+		rawData[i] = 0xff;
+	}
 }
 
 int NexusMessage::getI_Cnt()
@@ -4159,25 +4164,45 @@ void  NexusMessage::messageToText(char *dst,size_t dst_len,int level)
 	const char *bt;
 	int n;
 
-	// level = 0, itcprint (always process itc print info
+	// level = 0, itcprint (always process itc print info)
 	// level = 1, timestamp + target + itcprint
 	// level = 2, message info + timestamp + target + itcprint
+	// level = 3, message info + timestamp + target + itcprint + raw trace data
 
 	if (level <= 0) {
 		dst[0] = 0;
 		return;
 	}
 
+	n = snprintf(dst,dst_len,"Msg # %d, ",msgNum);
+
+	if (level >= 3) {
+		n += snprintf(dst+n,dst_len-n,"Offset %d, ",offset);
+
+		int i = 0;
+
+		do {
+			if (i > 0) {
+				n += snprintf(dst+n,dst_len-n,":%02x",rawData[i]);
+			}
+			else {
+				n += snprintf(dst+n,dst_len-n,"%02x",rawData[i]);
+			}
+			i += 1;
+		} while (((size_t)i < sizeof rawData / sizeof rawData[0]) && ((rawData[i] & 0x3) != TraceDqr::MSEO_END));
+		n += snprintf(dst+n,dst_len-n,", ");
+	}
+
 	if (haveTimestamp) {
 		if (NexusMessage::targetFrequency != 0) {
-			n = snprintf(dst,dst_len,"Msg # %d, time: %0.8f, NxtAddr: %08llx, TCode: ",msgNum,((double)time)/NexusMessage::targetFrequency,currentAddress);
+			n += snprintf(dst+n,dst_len-n,"time: %0.8f, NxtAddr: %08llx, TCode: ",((double)time)/NexusMessage::targetFrequency,currentAddress);
 		}
 		else {
-			n = snprintf(dst,dst_len,"Msg # %d, Tics: %lld, NxtAddr: %08llx, TCode: ",msgNum,time,currentAddress);
+			n += snprintf(dst+n,dst_len-n,"Tics: %lld, NxtAddr: %08llx, TCode: ",time,currentAddress);
 		}
 	}
 	else {
-		n = snprintf(dst,dst_len,"Msg # %d, NxtAddr: %08llx, TCode: ",msgNum,currentAddress);
+		n += snprintf(dst+n,dst_len-n,"NxtAddr: %08llx, TCode: ",currentAddress);
 	}
 
 	switch (tcode) {
@@ -5108,6 +5133,8 @@ SliceFileParser::SliceFileParser(char *filename, bool binary, int srcBits)
 	tf.seekg (0, tf.end);
 	tfSize = tf.tellg();
 	tf.seekg (0, tf.beg);
+
+	msgOffset = 0;
 
 #if	0
 	// read entire slice file, create multiple quese base on src field
@@ -6837,6 +6864,8 @@ TraceDqr::DQErr SliceFileParser::readBinaryMsg()
 		}
 	} while ((msg[0] & 0x3) != TraceDqr::MSEO_NORMAL);
 
+	msgOffset = ((uint32_t)tf.tellg())-1;
+
 	bool done = false;
 
 	for (int i = 1; !done; i++) {
@@ -7066,6 +7095,15 @@ TraceDqr::DQErr SliceFileParser::readNextTraceMsg(NexusMessage &nm,Analytics &an
 				return status;
 			}
 		}
+
+		nm.offset = msgOffset;
+
+		int i = 0;
+
+		do {
+			nm.rawData[i] = msg[i];
+			i += 1;
+		} while (((size_t)i < sizeof nm.rawData / sizeof nm.rawData[0]) && ((msg[i] & 0x03) != TraceDqr::MSEO_END));
 
 		rc = parseFixedField(6, &val);
 		if (rc == TraceDqr::DQERR_OK) {
