@@ -2648,9 +2648,9 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 					return status;
 				}
 
-				if (lastCycle[currentCore] != cycles) {
+//				if (lastCycle[currentCore] != cycles) {
 					eCycleCount[currentCore] = cycles - lastCycle[currentCore];
-				}
+//				}
 				lastCycle[currentCore] = cycles;
 			}
 
