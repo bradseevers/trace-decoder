@@ -2674,7 +2674,7 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 			}
 
 
-			lastCycle[currentCore] = cycles;
+//			lastCycle[currentCore] = cycles;
 
 			if (srcInfo != nullptr) {
 				sourceInfo.coreId = currentCore;
