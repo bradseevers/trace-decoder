@@ -306,6 +306,7 @@ public:
 
 	TraceDqr::TIMESTAMP timestamp;
 	int               cycles;
+	int               pipe;
 
 	uint32_t r0Val;
 	uint32_t r1Val;

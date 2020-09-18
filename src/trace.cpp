@@ -541,6 +541,7 @@ Trace::Trace(char *tf_name,bool binaryFlag,char *ef_name,int numAddrBits,uint32_
 
   instructionInfo.timestamp = 0;
   instructionInfo.cycles = 0;
+  instructionInfo.pipe = 0;
 
   sourceInfo.sourceFile = nullptr;
   sourceInfo.sourceFunction = nullptr;
@@ -2663,10 +2664,11 @@ TraceDqr::DQErr Trace::NextInstruction(Instruction **instInfo, NexusMessage **ms
 
 				if (caTrace != nullptr) {
 					(*instInfo)->timestamp = cycles;
-					(*instInfo)->cycles = cycles - lastCycle[currentCore];
-					if (lastCycle[currentCore] == cycles) {
+//					(*instInfo)->cycles = cycles - lastCycle[currentCore];
+//					if (lastCycle[currentCore] == cycles) {
 						(*instInfo)->cycles = eCycleCount[currentCore];
-					}
+//					}
+					(*instInfo)->pipe = pipe;
 				}
 				else {
 					(*instInfo)->timestamp = lastTime[currentCore];
